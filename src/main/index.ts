@@ -45,7 +45,7 @@ function createWindow() {
       preload: join(__dir, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false
     }
   })
 
