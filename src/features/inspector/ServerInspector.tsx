@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../../state/appStore'
-import type { PortConfig, ServerRegistryItem } from '../../../shared/mcp-types.js'
+import type { PortConfig, ServerRegistryItem, ServerTransport } from '../../../shared/mcp-types.js'
 import { DEFAULT_PLATFORM } from '../../../shared/mcp-types.js'
+import { chipDeploy, chipRun, chipSurface, chipTransport } from '../registry/statusFormat'
 
 export function ServerInspector() {
   const selectedId = useAppStore((s) => s.selectedId)
@@ -11,6 +12,10 @@ export function ServerInspector() {
   const [portIn, setPortIn] = useState('')
   const [portMode, setPortMode] = useState<'manual' | 'random'>('random')
   const [err, setErr] = useState<string | null>(null)
+  const endpointSummary = useMemo(() => {
+    if (!row) return '—'
+    return row.endpoint.pokeUrl ?? row.endpoint.remoteUrl ?? row.endpoint.localUrl ?? '—'
+  }, [row])
 
   useEffect(() => {
     if (!row) return
@@ -63,6 +68,43 @@ export function ServerInspector() {
       </div>
       <div className="mcpoke-scroll flex-1 p-2 space-y-2 text-[12px]">
         {err && <div className="text-(--color-danger) text-[11px] border border-red-500/20 p-1 rounded">{err}</div>}
+        <div className="mcpoke-panel p-2 space-y-1">
+          <div className="text-(--color-muted) text-[10px] uppercase">State surface</div>
+          <div className="flex flex-wrap items-center gap-1">
+            {chipTransport(row.endpoint.transport)}
+            {chipSurface(row.surfaceState)}
+            {chipRun(row.running.state)}
+            {chipDeploy(row.deployment.state)}
+            <span className={row.poke.authState === 'authenticated' ? 'mcpoke-chip text-(--color-ok) border-emerald-500/20' : 'mcpoke-chip text-(--color-warn) border-amber-500/30'}>
+              auth {row.poke.authState}
+            </span>
+            <span className={row.poke.connected ? 'mcpoke-chip text-(--color-ok) border-emerald-500/20' : 'mcpoke-chip'}>
+              poke {row.poke.connected ? 'connected' : 'idle'}
+            </span>
+          </div>
+          <div className="text-[10px] text-(--color-muted) font-mono break-all">
+            endpoint {endpointSummary}
+          </div>
+          {row.lastError && <div className="text-[10px] text-(--color-danger)">last error: {row.lastError}</div>}
+          {row.poke.lastSyncAt && (
+            <div className="text-[10px] text-(--color-muted)">
+              last sync {new Date(row.poke.lastSyncAt).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+
+        <div className="mcpoke-panel p-2 space-y-1">
+          <div className="text-(--color-muted) text-[10px] uppercase">Deployment instructions</div>
+          <ul className="space-y-0.5">
+            {row.deployment.instructions.map((step, idx) => (
+              <li key={step + idx} className="text-[11px] text-(--color-fg) flex items-start gap-1">
+                <span className="text-(--color-muted) w-3 text-right">{idx + 1}</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div>
           <div className="text-(--color-muted) text-[10px] uppercase mb-0.5">Connection</div>
           <div className="font-mono text-[11px] text-(--color-fg)">{row.connection}</div>
@@ -75,7 +117,7 @@ export function ServerInspector() {
             <div className="font-mono text-[10px] text-(--color-muted) break-all">local {row.tunnel.localUrl}</div>
           )}
         </div>
-        {row.item.config.transport === 'http' && (
+        {row.item.config.transport === 'http' && row.endpoint.origin === 'local' && (
           <div>
             <div className="text-(--color-muted) text-[10px] uppercase mb-0.5">Port</div>
             <div className="flex gap-1 items-center flex-wrap">
@@ -120,7 +162,7 @@ export function ServerInspector() {
           </div>
         )}
         <div>
-          <div className="text-(--color-muted) text-[10px] uppercase mb-1">Actions</div>
+          <div className="text-(--color-muted) text-[10px] uppercase mb-1">Operator actions</div>
           <div className="flex flex-wrap gap-0.5">
             <Act label="Install" onClick={() => run(() => window.mcpoke.install(id))} />
             <Act label="Start" onClick={() => run(() => window.mcpoke.start(id))} />
@@ -130,12 +172,13 @@ export function ServerInspector() {
             <Act label="Tunnel off" onClick={() => run(() => window.mcpoke.tunnelStop(id))} />
             <Act label="Tools" onClick={() => run(() => window.mcpoke.refreshTools(id))} />
             <Act label="Inspector ↗" onClick={() => window.mcpoke.openMcpInspector('https://github.com/modelcontextprotocol/inspector')} />
+            {row.lastError && <Act label="Recover" onClick={() => run(() => window.mcpoke.restart(id))} />}
           </div>
         </div>
         <div>
           <div className="text-(--color-muted) text-[10px] uppercase mb-0.5">Tools ({row.toolsCount})</div>
           <div className="font-mono text-[10px] max-h-40 mcpoke-scroll border border-(--color-border) rounded p-1 bg-(--color-canvas)">
-            {row.tools.length === 0 && <span className="text-(--color-muted)">— start & refresh</span>}
+            {row.tools.length === 0 && <span className="text-(--color-muted)">— tools appear after successful connection</span>}
             {row.tools.map((t) => (
               <div key={t.name} className="border-b border-(--color-border) last:border-0 py-0.5">
                 <span className="text-(--color-fg)">{t.name}</span>
@@ -143,12 +186,6 @@ export function ServerInspector() {
               </div>
             ))}
           </div>
-        </div>
-        <div>
-          <div className="text-(--color-muted) text-[10px] uppercase">Config</div>
-          <pre className="text-[10px] font-mono text-(--color-muted) whitespace-pre-wrap break-all">
-            {JSON.stringify(row.item.config, null, 2)}
-          </pre>
         </div>
         {row.item.source === 'custom' && (
           <button
@@ -180,12 +217,13 @@ function Act({ label, onClick }: { label: string; onClick: () => void }) {
 function AddCustomForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState('My MCP')
   const [desc, setDesc] = useState('')
-  const [transport, setTransport] = useState<'stdio' | 'http'>('stdio')
+  const [transport, setTransport] = useState<ServerTransport>('stdio')
   const [cmd, setCmd] = useState('npx')
   const [args, setArgs] = useState('-y @modelcontextprotocol/server-filesystem .')
   const [pkg, setPkg] = useState('@modelcontextprotocol/server-filesystem')
   const [ext, setExt] = useState(false)
   const [mcpPath, setMcpPath] = useState('/mcp')
+  const [remoteUrl, setRemoteUrl] = useState('')
 
   const submit = async () => {
     const item: ServerRegistryItem = {
@@ -195,6 +233,7 @@ function AddCustomForm({ onDone }: { onDone: () => void }) {
       source: 'custom',
       config: {
         transport,
+        remoteUrl: transport === 'sse' && remoteUrl ? remoteUrl : undefined,
         packageSpec: pkg || undefined,
         command: cmd,
         args: args.split(/\s+/).filter(Boolean),
@@ -212,13 +251,19 @@ function AddCustomForm({ onDone }: { onDone: () => void }) {
     <div className="px-2 pb-2 space-y-1.5 text-[12px]">
       <input className="mcpoke-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
       <input className="mcpoke-input" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description" />
-      <select className="mcpoke-input" value={transport} onChange={(e) => setTransport(e.target.value as 'stdio' | 'http')}>
+      <select className="mcpoke-input" value={transport} onChange={(e) => setTransport(e.target.value as ServerTransport)}>
         <option value="stdio">stdio</option>
         <option value="http">http</option>
+        <option value="sse">sse</option>
       </select>
+      {transport === 'sse' && (
+        <input className="mcpoke-input" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="remote endpoint URL" />
+      )}
       <input className="mcpoke-input" value={pkg} onChange={(e) => setPkg(e.target.value)} placeholder="npm package (install)" />
-      <input className="mcpoke-input" value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder="command" />
-      <input className="mcpoke-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="args (space-separated)" />
+      <input className="mcpoke-input" value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder="internal start command" />
+      {transport !== 'sse' && (
+        <input className="mcpoke-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="internal start args (space-separated)" />
+      )}
       {transport === 'http' && (
         <>
           <label className="flex items-center gap-1 text-(--color-muted) text-[11px]">

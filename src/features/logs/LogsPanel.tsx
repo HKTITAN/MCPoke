@@ -6,6 +6,7 @@ const levels: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error']
 
 export function LogsPanel() {
   const selectedId = useAppStore((s) => s.selectedId)
+  const selected = useAppStore((s) => s.servers.find((x) => x.item.id === s.selectedId) ?? null)
   const storeLogs = useAppStore((s) => s.logs)
   const setLogs = useAppStore((s) => s.setLogs)
   const [q, setQ] = useState('')
@@ -74,6 +75,15 @@ export function LogsPanel() {
         </button>
         <span className="text-[10px] text-(--color-muted)">tail · {storeLogs.length} lines</span>
       </div>
+      {selected && (
+        <div className="flex flex-wrap gap-1 items-center border-b border-(--color-border) px-2 py-1 text-[10px] text-(--color-muted)">
+          <span className="mcpoke-chip">state {selected.running.state}</span>
+          <span className="mcpoke-chip">deploy {selected.deployment.state}</span>
+          <span className="mcpoke-chip">surface {selected.surfaceState}</span>
+          {selected.lastError && <span className="text-(--color-danger)">last error: {selected.lastError}</span>}
+          {selected.poke.lastSyncAt && <span>last sync {new Date(selected.poke.lastSyncAt).toLocaleTimeString()}</span>}
+        </div>
+      )}
       <div className="mcpoke-scroll flex-1 font-mono text-[10px] leading-snug p-1 bg-(--color-canvas) text-(--color-fg)">
         {selectedId
           ? filtered.map((l) => <LogLine key={l.id} log={l} />)

@@ -3,7 +3,7 @@ import type { ServerRegistryItem } from '../../../shared/mcp-types.js'
 export const PRESET_SERVERS: ServerRegistryItem[] = [
   {
     id: 'preset-mcp-hello',
-    name: 'Local HTTP example',
+    name: 'Local HTTP bridge (external)',
     description:
       'HTTP MCP: set port, start your server externally, then connect here. Tunnel forwards this URL to Poke.',
     source: 'preset',
@@ -15,6 +15,30 @@ export const PRESET_SERVERS: ServerRegistryItem[] = [
       useExternalStart: true
     },
     platform: { win32: true, darwin: true, linux: true, notes: 'Set port + path; start server yourself if external' },
+    lastSync: 0
+  },
+  {
+    id: 'preset-remote-http',
+    name: 'Remote HTTP MCP endpoint',
+    description: 'Connect directly to a remote HTTP MCP endpoint and monitor deploy readiness.',
+    source: 'preset',
+    config: {
+      transport: 'http',
+      remoteUrl: 'https://example.com/mcp'
+    },
+    platform: { win32: true, darwin: true, linux: true, notes: 'Remote endpoint; no local process required' },
+    lastSync: 0
+  },
+  {
+    id: 'preset-remote-sse',
+    name: 'Remote SSE MCP endpoint',
+    description: 'Track legacy SSE-based MCP endpoints as first-class remote connections.',
+    source: 'preset',
+    config: {
+      transport: 'sse',
+      remoteUrl: 'https://example.com/sse'
+    },
+    platform: { win32: true, darwin: true, linux: true, notes: 'Remote SSE endpoint; no local process required' },
     lastSync: 0
   },
   {

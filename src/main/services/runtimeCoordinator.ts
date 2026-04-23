@@ -13,15 +13,20 @@ import { getAuthViewModel } from './authService.js'
 import { assertPortInRange, findFreePort, isPortFree } from '../../lib/portUtils.js'
 import { IPC } from '../../../shared/ipc.js'
 import type {
+  DeploymentState,
+  EndpointViewModel,
   McpToolDescriptor,
   PortConfig,
   PortMode,
   PortStatus,
+  PokeStatusViewModel,
   ServerRegistryItem,
+  ServerSurfaceState,
   ServerViewModel,
   TunnelState,
   RuntimeState,
-  InstalledState
+  InstalledState,
+  DeploymentViewModel
 } from '../../../shared/mcp-types.js'
 import { isPlatformOk, type PlatformSupport, DEFAULT_PLATFORM } from '../../../shared/mcp-types.js'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -37,6 +42,8 @@ type Live = {
   connection: 'disconnected' | 'connecting' | 'ready' | 'error'
   runtime: RuntimeState
   lastError?: string
+  lastSyncAt?: number
+  pokeSyncState: DeploymentState
   port: PortConfig
   assignedPort?: number
   processPid?: number
@@ -70,6 +77,7 @@ function ensureLive(id: string): Live {
       toolsCount: 0,
       connection: 'disconnected',
       runtime: 'idle',
+      pokeSyncState: 'pending',
       port: { mode: 'random', status: 'none' }
     }
     lives.set(id, e)
@@ -108,6 +116,10 @@ function toView(item: ServerRegistryItem): ServerViewModel {
       toolsCount: live.toolsCount
     }
   })()
+  const endpoint = buildEndpoint(item, live, port, tunnel)
+  const surfaceState = deriveSurfaceState(item, live, endpoint, tunnel)
+  const poke = derivePokeStatus(live)
+  const deployment = deriveDeployment(surfaceState, endpoint, poke, live.connection === 'ready', live.runtime, live.lastError)
   return {
     item,
     installed: runState,
@@ -118,7 +130,11 @@ function toView(item: ServerRegistryItem): ServerViewModel {
       startedAt: live.startedAt
     },
     port: { ...port, assigned: live.assignedPort ?? port.assigned, status: port.status },
+    endpoint,
+    surfaceState,
     tunnel,
+    deployment,
+    poke,
     tools: live.tools,
     toolsCount: live.toolsCount,
     lastError: lastErr,
@@ -148,6 +164,131 @@ function localHttpUrl(port: number, mcpPath?: string) {
   return `http://127.0.0.1:${port}${pathPart}`
 }
 
+function buildEndpoint(item: ServerRegistryItem, live: Live, port: PortConfig, tunnel: TunnelState): EndpointViewModel {
+  const transport = item.config.transport
+  if (item.config.remoteUrl) {
+    return {
+      transport,
+      origin: 'remote',
+      remoteUrl: item.config.remoteUrl,
+      pokeUrl: tunnel.tunnelUrl
+    }
+  }
+
+  if (transport === 'sse') {
+    return {
+      transport,
+      origin: 'remote',
+      remoteUrl: item.config.remoteUrl,
+      pokeUrl: tunnel.tunnelUrl
+    }
+  }
+
+  const assigned = live.assignedPort ?? port.assigned ?? port.value
+  const localUrl = transport === 'http' && assigned ? localHttpUrl(assigned, item.config.mcpPath) : undefined
+  return {
+    transport,
+    origin: 'local',
+    localUrl,
+    pokeUrl: tunnel.tunnelUrl
+  }
+}
+
+function deriveSurfaceState(
+  item: ServerRegistryItem,
+  live: Live,
+  endpoint: EndpointViewModel,
+  tunnel: TunnelState
+): ServerSurfaceState {
+  if (endpoint.origin === 'remote') {
+    return item.config.transport === 'sse' ? 'remote_sse' : 'remote_http'
+  }
+  if (live.runtime === 'tunneling') return 'tunneling'
+  if (tunnel.active) return 'tunneled'
+  if (live.connection === 'ready') {
+    return item.config.transport === 'http' ? 'needs_tunnel' : 'local_started'
+  }
+  if (live.runtime === 'starting' || live.runtime === 'running' || live.runtime === 'installing' || live.runtime === 'installed') {
+    return 'local_started'
+  }
+  return 'local_started'
+}
+
+function derivePokeStatus(live: Live): PokeStatusViewModel {
+  const authState = getAuthViewModel().state
+  const syncState: DeploymentState = authState === 'expired' ? 'error' : live.pokeSyncState
+  return {
+    authState,
+    connected: !!live.tunnel?.connected,
+    syncState,
+    lastSyncAt: live.lastSyncAt
+  }
+}
+
+function deriveDeployment(
+  surfaceState: ServerSurfaceState,
+  endpoint: EndpointViewModel,
+  poke: PokeStatusViewModel,
+  connected: boolean,
+  runtime: RuntimeState,
+  lastError?: string
+): DeploymentViewModel {
+  let state: DeploymentState = 'pending'
+  if (lastError || runtime === 'error' || poke.syncState === 'error') {
+    state = 'error'
+  } else if (surfaceState === 'tunneled' && (runtime === 'deployed' || poke.syncState === 'synced')) {
+    state = 'deployed'
+  } else if (surfaceState === 'tunneling' || poke.syncState === 'syncing') {
+    state = 'syncing'
+  } else if (surfaceState === 'tunneled') {
+    state = 'synced'
+  } else if (endpoint.origin === 'remote' && connected) {
+    state = 'deployed'
+  }
+
+  const ready = state === 'deployed'
+  return {
+    state,
+    ready,
+    instructions: buildInstructionCards(surfaceState, endpoint, poke, connected, state),
+    lastSyncAt: poke.lastSyncAt
+  }
+}
+
+function buildInstructionCards(
+  surfaceState: ServerSurfaceState,
+  endpoint: EndpointViewModel,
+  poke: PokeStatusViewModel,
+  connected: boolean,
+  deploymentState: DeploymentState
+): string[] {
+  if (deploymentState === 'error') {
+    return ['check last error', 'recover connection', 're-run sync', 'ready for connection']
+  }
+  if (surfaceState === 'remote_http') {
+    return ['remote HTTP endpoint configured', 'verify endpoint health', 'wait for sync', 'ready for connection']
+  }
+  if (surfaceState === 'remote_sse') {
+    return ['remote SSE endpoint configured', 'verify stream connectivity', 'wait for sync', 'ready for connection']
+  }
+  if (surfaceState === 'tunneling') {
+    return ['start local server', 'tunnel via Poke SDK', 'wait for sync', 'ready for connection']
+  }
+  if (surfaceState === 'tunneled') {
+    return ['local server running', 'tunnel active via Poke SDK', 'sync tools to Poke', 'ready for connection']
+  }
+  if (surfaceState === 'needs_tunnel') {
+    return ['start local server', 'tunnel via Poke SDK', 'wait for sync', 'ready for connection']
+  }
+  if (endpoint.transport === 'stdio') {
+    return ['local server running', 'inspect tools and logs', 'use HTTP/SSE endpoint for remote deploy', 'ready for local connection']
+  }
+  if (!connected && poke.authState !== 'authenticated') {
+    return ['login with Poke', 'start local server', 'tunnel via Poke SDK', 'ready for connection']
+  }
+  return ['start local server', 'wait for connection', 'sync deployment state', 'ready for connection']
+}
+
 async function withAuth<T>(fn: () => Promise<T>): Promise<T> {
   const a = getAuthViewModel()
   if (a.state !== 'authenticated') {
@@ -173,16 +314,25 @@ function broadcast() {
 
 function attachPokeEvents(id: string, t: PokeTunnel) {
   t.on('connected', () => {
+    const l = ensureLive(id)
+    l.pokeSyncState = 'syncing'
     pushLog(id, { level: 'info', source: 'poke', message: 'Tunnel connected', stream: 'tunnel' })
-    recordRuntime(id, 'tunneling')
+    recordRuntime(id, 'tunneled')
     broadcast()
   })
   t.on('disconnected', () => {
+    const l = ensureLive(id)
+    l.pokeSyncState = 'pending'
     pushLog(id, { level: 'info', source: 'poke', message: 'Tunnel disconnected', stream: 'tunnel' })
+    if (l.connection === 'ready') {
+      l.runtime = 'running'
+    }
+    broadcast()
   })
   t.on('error', (err) => {
     const l = ensureLive(id)
     l.lastError = err.message
+    l.pokeSyncState = 'error'
     pushLog(id, { level: 'error', source: 'poke', message: err.message, stream: 'tunnel' })
     recordRuntime(id, 'error')
     broadcast()
@@ -190,7 +340,10 @@ function attachPokeEvents(id: string, t: PokeTunnel) {
   t.on('toolsSynced', (r) => {
     const l = ensureLive(id)
     l.toolsCount = r.toolCount
+    l.pokeSyncState = 'synced'
+    l.lastSyncAt = Date.now()
     pushLog(id, { level: 'info', source: 'poke', message: `Tools synced: ${r.toolCount}`, stream: 'tunnel' })
+    recordRuntime(id, 'deployed')
     broadcast()
   })
   t.on('oauthRequired', (info) => {
@@ -279,7 +432,35 @@ export async function startServer(id: string): Promise<ServerViewModel> {
   const item = resolveItems().find((x) => x.id === id)
   if (!item) throw new Error('Unknown server')
   const c = getCache()
-  const ext = item.config.transport === 'http' && item.config.useExternalStart
+  const isRemote = !!item.config.remoteUrl
+  const ext = (item.config.transport === 'http' || item.config.transport === 'sse') && (item.config.useExternalStart || isRemote)
+  if (isRemote && item.config.remoteUrl) {
+    recordRuntime(id, 'starting')
+    const l = ensureLive(id)
+    l.lastError = undefined
+    if (item.config.transport === 'sse') {
+      l.client = null
+      l.httpTr = null
+      l.connection = 'disconnected'
+      pushLog(id, {
+        source: 'remote',
+        stream: 'system',
+        message: `Remote SSE endpoint tracked: ${item.config.remoteUrl}`
+      })
+    } else {
+      const { client, tr } = await tryConnectHttp(id, item.config.remoteUrl)
+      l.client = client
+      l.httpTr = tr
+      await loadToolsFromClient(id, client)
+    }
+    l.pokeSyncState = 'synced'
+    l.lastSyncAt = Date.now()
+    recordRuntime(id, 'deployed')
+    const v = toView(item)
+    broadcastView(v)
+    return v
+  }
+
   if (!c.installed[id]?.installed && !ext) {
     throw new Error('Install this server first')
   }
@@ -305,11 +486,14 @@ export async function startServer(id: string): Promise<ServerViewModel> {
   l.lastError = undefined
 
   if (item.config.transport === 'stdio') {
+    if (!item.config.command) {
+      throw new Error('Missing command for stdio server start')
+    }
     const cwd = item.config.cwd ?? serverCwd(id)
     await mkdir(cwd, { recursive: true })
     const t = new StdioClientTransport({
       command: item.config.command,
-      args: item.config.args,
+      args: item.config.args ?? [],
       cwd,
       env: { ...getDefaultEnvironment(), ...item.config.env },
       stderr: 'pipe'
@@ -329,6 +513,10 @@ export async function startServer(id: string): Promise<ServerViewModel> {
     const v = toView(item)
     broadcastView(v)
     return v
+  }
+
+  if (item.config.transport === 'sse') {
+    throw new Error('SSE servers in MCPoke are remote-only. Configure a remote endpoint URL.')
   }
 
   const pconf = c.portById[id] ?? l.port
@@ -355,10 +543,13 @@ export async function startServer(id: string): Promise<ServerViewModel> {
   if (item.config.useExternalStart) {
     pushLog(id, { source: 'http', message: `Connecting to ${url} (external process)`, stream: 'system' })
   } else {
+    if (!item.config.command) {
+      throw new Error('Missing command for local HTTP server start')
+    }
     await mkdir(serverCwd(id), { recursive: true })
     const childEnv = { ...process.env, ...item.config.env, PORT: String(portNum), NODE_ENV: 'development' }
     const p = item.config.command
-    const args = [...item.config.args]
+    const args = [...(item.config.args ?? [])]
     l.httpChild = spawn(p, args, {
       cwd: item.config.cwd ?? serverCwd(id),
       env: childEnv,
@@ -376,7 +567,7 @@ export async function startServer(id: string): Promise<ServerViewModel> {
     l.httpChild.on('close', (code) => {
       pushLog(id, { source: 'server', level: 'warn', message: `exited with ${code ?? 'null'}`, stream: 'system' })
       l.connection = 'disconnected'
-      l.runtime = 'idle'
+      recordRuntime(id, 'idle')
     })
   }
   const { client, tr } = await tryConnectHttp(id, url)
@@ -437,8 +628,13 @@ export async function startTunnel(id: string): Promise<ServerViewModel> {
   await withAuth(async () => {
     const item = resolveItems().find((x) => x.id === id)
     if (!item) throw new Error('Unknown server')
-    if (item.config.transport !== 'http') {
-      throw new Error('Poke tunnel targets an HTTP(S) local URL. This server is stdio-only; run an HTTP MCP on a port or add a custom HTTP server with the same tool surface.')
+    if (item.config.transport !== 'http' && item.config.transport !== 'sse') {
+      throw new Error(
+        'Poke tunnel targets an HTTP/SSE URL. This server is stdio-only; run an HTTP MCP on a port or add a remote HTTP/SSE endpoint.'
+      )
+    }
+    if (item.config.remoteUrl) {
+      throw new Error('This server already uses a remote endpoint. Tunnel is only required for local HTTP servers.')
     }
     const l = ensureLive(id)
     if (!l.client || l.connection !== 'ready') {
@@ -468,6 +664,7 @@ export async function stopTunnel(id: string): Promise<ServerViewModel> {
   if (l.tunnel) {
     await l.tunnel.stop()
     l.tunnel = null
+    l.pokeSyncState = 'pending'
   }
   recordRuntime(id, l.client ? 'running' : 'idle')
   const item2 = resolveItems().find((x) => x.id === id)!
@@ -497,6 +694,12 @@ export function getLogsFor(id: string) {
 export async function setPortFor(id: string, config: PortConfig): Promise<ServerViewModel> {
   await persistReady
   const c = getCache()
+  if (config.mode === 'manual' && config.value) {
+    const free = await isPortFree(config.value)
+    config = { ...config, status: free ? 'assigned' : 'conflict', assigned: free ? config.value : undefined }
+  } else if (config.mode === 'random') {
+    config = { ...config, status: 'none', assigned: undefined }
+  }
   c.portById[id] = config
   await savePersistence({ portById: c.portById } as Partial<McpokePersisted>)
   const l = ensureLive(id)
@@ -512,7 +715,21 @@ export async function checkPortFor(id: string): Promise<{ free: boolean; inUse: 
   const c = getCache()
   const p = c.portById[id]?.value
   if (!p) return { free: true, inUse: false, suggested: await findFreePort() }
-  return { free: await isPortFree(p), inUse: !(await isPortFree(p)) }
+  const free = await isPortFree(p)
+  const item = resolveItems().find((x) => x.id === id)
+  if (item) {
+    c.portById[id] = {
+      ...(c.portById[id] ?? { mode: 'manual' as PortMode }),
+      value: p,
+      status: free ? 'assigned' : 'conflict',
+      assigned: free ? p : undefined
+    }
+    await savePersistence({ portById: c.portById } as Partial<McpokePersisted>)
+    const l = ensureLive(id)
+    l.port = c.portById[id]!
+    broadcastView(toView(item))
+  }
+  return { free, inUse: !free }
 }
 
 export async function pickRandomPort(): Promise<{ port: number }> {

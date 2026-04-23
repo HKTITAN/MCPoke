@@ -13,6 +13,8 @@ export type RuntimeState =
   | 'starting'
   | 'running'
   | 'tunneling'
+  | 'tunneled'
+  | 'deployed'
   | 'stopping'
   | 'error'
 
@@ -20,7 +22,7 @@ export type PortMode = 'manual' | 'random' | 'fixed'
 
 export type PortStatus = 'none' | 'assigned' | 'in_use' | 'conflict'
 
-export type ServerTransport = 'stdio' | 'http'
+export type ServerTransport = 'stdio' | 'http' | 'sse'
 
 export type LogStreamType = 'stdout' | 'stderr' | 'system' | 'tunnel' | 'poke'
 
@@ -44,12 +46,13 @@ export interface PlatformSupport {
 
 export interface ServerConfig {
   transport: ServerTransport
+  /** Remote endpoint URL for remote HTTP/SSE servers */
+  remoteUrl?: string
   /** npm spec or local path for install step */
   packageSpec?: string
-  installArgs?: string[]
-  /** command to start (stdio) or to listen (http) */
-  command: string
-  args: string[]
+  /** command to start (stdio) or local http listener */
+  command?: string
+  args?: string[]
   cwd?: string
   env?: Record<string, string>
   /** e.g. /mcp — combined with port for local URL on http */
@@ -104,6 +107,38 @@ export interface TunnelState {
   toolsCount?: number
 }
 
+export type ServerSurfaceState =
+  | 'remote_http'
+  | 'remote_sse'
+  | 'local_started'
+  | 'tunneling'
+  | 'tunneled'
+  | 'needs_tunnel'
+
+export type DeploymentState = 'pending' | 'syncing' | 'synced' | 'deployed' | 'error'
+
+export interface EndpointViewModel {
+  transport: ServerTransport
+  origin: 'remote' | 'local'
+  localUrl?: string
+  remoteUrl?: string
+  pokeUrl?: string
+}
+
+export interface PokeStatusViewModel {
+  authState: AuthSessionState
+  connected: boolean
+  syncState: DeploymentState
+  lastSyncAt?: number
+}
+
+export interface DeploymentViewModel {
+  state: DeploymentState
+  ready: boolean
+  instructions: string[]
+  lastSyncAt?: number
+}
+
 export interface McpToolDescriptor {
   name: string
   description?: string
@@ -115,7 +150,11 @@ export interface ServerViewModel {
   installed: InstalledState
   running: RunningState
   port: PortConfig
+  endpoint: EndpointViewModel
+  surfaceState: ServerSurfaceState
   tunnel: TunnelState
+  deployment: DeploymentViewModel
+  poke: PokeStatusViewModel
   tools: McpToolDescriptor[]
   toolsCount: number
   lastError?: string

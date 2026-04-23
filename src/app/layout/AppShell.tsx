@@ -76,7 +76,13 @@ export function AppShell() {
         {tab === 'running' && (
           <div className="flex-1 p-2 mcpoke-scroll text-[12px]">
             {servers
-              .filter((s) => s.running.state === 'running' || s.running.state === 'tunneling' || s.running.state === 'starting')
+              .filter((s) =>
+                s.running.state === 'running' ||
+                s.running.state === 'tunneling' ||
+                s.running.state === 'tunneled' ||
+                s.running.state === 'deployed' ||
+                s.running.state === 'starting'
+              )
               .map((s) => (
                 <div key={s.item.id} className="mcpoke-row mcpoke-panel border-b border-(--color-border)">
                   <span className="font-mono w-6">{s.running.state}</span>
@@ -84,7 +90,7 @@ export function AppShell() {
                   <span className="text-(--color-muted)">pid {s.running.pid ?? '—'}</span>
                 </div>
               ))}
-            {servers.filter((s) => s.running.state === 'running' || s.running.state === 'tunneling').length === 0 && (
+            {servers.filter((s) => ['running', 'tunneling', 'tunneled', 'deployed'].includes(s.running.state)).length === 0 && (
               <div className="text-(--color-muted)">No active run/tunnel. Start a server from Registry.</div>
             )}
           </div>
