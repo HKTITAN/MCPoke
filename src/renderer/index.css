@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --color-canvas: #0a0a0a;
+  --color-surface: #0f0f0f;
+  --color-elevated: #141414;
+  --color-border: #262626;
+  --color-border-strong: #333;
+  --color-fg: #e7e7e7;
+  --color-muted: #8b8b8b;
+  --color-accent: #1d9bf0;
+  --color-danger: #f4212e;
+  --color-warn: #f59e0b;
+  --color-ok: #22c55e;
+  --color-chip: #1a1a1a;
+  --ring-focus: 0 0 0 2px rgba(29, 155, 240, 0.35);
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-(--color-canvas) text-(--color-fg) antialiased text-[13px] leading-tight;
+    font-family: var(--font-sans);
+  }
+  * {
+    @apply border-(--color-border);
+  }
+  ::selection {
+    @apply bg-blue-500/30;
+  }
+  button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  kbd {
+    @apply text-[10px] px-1 py-0.5 rounded border border-(--color-border-strong) bg-(--color-elevated) text-(--color-muted) font-mono;
+  }
+}
+
+@layer components {
+  .mcpoke-panel {
+    @apply border border-(--color-border) bg-(--color-surface);
+  }
+  .mcpoke-row {
+    @apply min-h-8 px-2 py-0.5 flex items-center gap-1.5;
+  }
+  .mcpoke-btn {
+    @apply text-[12px] px-1.5 py-0.5 rounded border border-(--color-border-strong) bg-(--color-elevated) hover:bg-(--color-border) transition active:scale-[0.99];
+  }
+  .mcpoke-btn-ghost {
+    @apply text-[12px] px-1.5 py-0.5 rounded border border-transparent hover:bg-(--color-elevated) transition;
+  }
+  .mcpoke-btn-pri {
+    @apply text-[12px] px-1.5 py-0.5 rounded border border-blue-500/30 bg-blue-500/20 text-white hover:bg-blue-500/30 transition active:scale-[0.99];
+  }
+  .mcpoke-chip {
+    @apply text-[10px] px-1 py-0.5 rounded font-medium bg-(--color-chip) text-(--color-muted) border border-(--color-border);
+  }
+  .mcpoke-table-head {
+    @apply sticky top-0 z-10 text-[10px] uppercase tracking-wide text-(--color-muted) font-medium border border-(--color-border) bg-(--color-surface);
+  }
+  .mcpoke-input {
+    @apply w-full min-w-0 border border-(--color-border) bg-(--color-canvas) text-(--color-fg) px-1.5 py-0.5 text-[12px] rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40;
+  }
+  .mcpoke-scroll {
+    @apply overflow-auto overscroll-contain;
+  }
+}
+
+/* cmdk */
+[cmdk-root] {
+  @apply border border-(--color-border) bg-(--color-surface);
+}
+[cmdk-input] {
+  @apply w-full min-w-0 border-0 bg-(--color-canvas) text-(--color-fg) px-1.5 py-0.5 text-[12px] rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40;
+}
+[cmdk-list] {
+  @apply p-0 max-h-56 overflow-auto overscroll-contain;
+}
+[cmdk-item] {
+  @apply min-h-8 px-2 py-0.5 flex items-center gap-1.5 cursor-pointer;
+}
+[cmdk-item][data-selected="true"] {
+  @apply bg-(--color-elevated);
+}
