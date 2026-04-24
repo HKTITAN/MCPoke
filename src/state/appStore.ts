@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AuthViewModel, LogEntry, McpRegistryEntry, ServerViewModel } from '../../shared/mcp-types.js'
+import type { AuthViewModel, LogEntry, McpokeSettings, McpRegistryEntry, ServerViewModel } from '../../shared/mcp-types.js'
 import type { AuthErrorEvent } from '../../shared/ipc.js'
 
 type Tab = 'registry' | 'browse' | 'auth' | 'running' | 'logs' | 'settings'
@@ -35,6 +35,9 @@ type AppState = {
   marketplaceError: string | null
   loadMarketplace: (search?: string) => Promise<void>
   init: () => void
+  settings: McpokeSettings | null
+  setSettings: (settings: McpokeSettings) => void
+  updateSettings: (settings: Partial<McpokeSettings>) => Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -85,9 +88,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ marketplaceError: e instanceof Error ? e.message : String(e), marketplaceLoading: false })
     }
   },
+  settings: null,
+  setSettings: (settings) => set({ settings }),
+  updateSettings: async (settings) => {
+    const next = await window.mcpoke.setSettings(settings)
+    set({ settings: next })
+  },
   init: () => {
     const api = window.mcpoke
     void api.getAuth().then((a) => set({ auth: a }))
+    void api.getSettings().then((settings) => set({ settings }))
     void get().loadRegistry()
     api.onState((m) => get().mergeView(m.view))
     api.onLogs((e) => get().appendLogEvent(e))

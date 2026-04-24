@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { PortConfig, ServerRegistryItem } from '../../../shared/mcp-types.js'
+import type { McpokeSettings, PortConfig, ServerRegistryItem } from '../../../shared/mcp-types.js'
 import { app } from 'electron'
 
 const FILE = 'mcpoke.json'
@@ -10,7 +10,7 @@ export interface McpokePersisted {
   customServers: ServerRegistryItem[]
   portById: Record<string, PortConfig>
   installed: Record<string, { installed: boolean; path?: string; lastInstallAt?: number }>
-  settings: { theme: 'dark' }
+  settings: McpokeSettings
 }
 
 const empty: McpokePersisted = {
@@ -18,7 +18,7 @@ const empty: McpokePersisted = {
   customServers: [],
   portById: {},
   installed: {},
-  settings: { theme: 'dark' }
+  settings: { theme: 'dark', permissionMode: 'sandbox', notificationsEnabled: true, autoStartNativeRuntime: false }
 }
 
 let cache: McpokePersisted = empty
@@ -51,4 +51,14 @@ export async function savePersistence(partial: Partial<McpokePersisted>): Promis
 
 export function getCache(): McpokePersisted {
   return cache
+}
+
+export function getSettings(): McpokeSettings {
+  return cache.settings
+}
+
+export async function saveSettings(settings: Partial<McpokeSettings>): Promise<McpokeSettings> {
+  const merged: McpokeSettings = { ...cache.settings, ...settings }
+  await savePersistence({ settings: merged })
+  return merged
 }

@@ -2,6 +2,7 @@ import type {
   AuthErrorCode,
   AuthViewModel,
   LogEntry,
+  McpokeSettings,
   McpRegistryEntry,
   ServerRegistryItem,
   ServerViewModel,
@@ -33,6 +34,8 @@ export const IPC = {
   pickPort: 'mcpoke:port:pick' as const,
   setPort: 'mcpoke:port:set' as const,
   getLogs: 'mcpoke:logs:get' as const,
+  settingsGet: 'mcpoke:settings:get' as const,
+  settingsSet: 'mcpoke:settings:set' as const,
 
   onLogs: 'mcpoke:logs:push' as const,
   onState: 'mcpoke:state:push' as const,
@@ -53,6 +56,7 @@ export type RegistryDelete = { id: string }
 export type ServerId = { id: string }
 export type PortSet = { id: string; config: PortConfig }
 export type LogsQuery = { id: string; max?: number }
+export type SettingsSet = Partial<McpokeSettings>
 
 export type RegistryListRes = { servers: ServerViewModel[] }
 export type StatePush = { view: ServerViewModel }
@@ -79,6 +83,8 @@ export interface ElectronApi {
   pickRandomPort: () => Promise<{ port: number }>
   setPort: (id: string, config: PortConfig) => Promise<ServerViewModel>
   getLogs: (id: string, max?: number) => Promise<LogEntry[]>
+  getSettings: () => Promise<McpokeSettings>
+  setSettings: (settings: Partial<McpokeSettings>) => Promise<McpokeSettings>
   onState: (cb: (m: { view: ServerViewModel }) => void) => () => void
   onAuthChanged: (cb: (a: AuthViewModel) => void) => () => void
   onLoginCode: (cb: (code: { userCode: string; loginUrl: string }) => void) => () => void

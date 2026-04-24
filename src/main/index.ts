@@ -21,10 +21,17 @@ import {
   getLogsFor
 } from './services/runtimeCoordinator.js'
 import { fetchMarketplace } from './services/registryFetcher.js'
+import { getSettings, saveSettings } from './services/persistence.js'
 import { IPC, type AuthLoginRequest, type IpcResult } from '../../shared/ipc.js'
 import type { LogEntry, PortConfig, ServerRegistryItem } from '../../shared/mcp-types.js'
 
 const __dir = dirname(fileURLToPath(import.meta.url))
+
+// Prevent Chromium background services (component updater, telemetry pings, etc.)
+// from generating repeated SSL handshake noise in local dev.
+app.commandLine.appendSwitch('disable-background-networking')
+app.commandLine.appendSwitch('disable-component-update')
+if (is.dev) app.commandLine.appendSwitch('log-level', '3')
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -185,6 +192,20 @@ function installIpc() {
   })
   ipcMain.handle(IPC.getLogs, async (_e, p: { id: string; max?: number }): Promise<LogEntry[]> => {
     return getLogsFor(p.id)
+  })
+  ipcMain.handle(IPC.settingsGet, async () => {
+    try {
+      return ok(getSettings())
+    } catch (e) {
+      return er(e instanceof Error ? e.message : String(e))
+    }
+  })
+  ipcMain.handle(IPC.settingsSet, async (_e, settings: Record<string, unknown>) => {
+    try {
+      return ok(await saveSettings(settings as never))
+    } catch (e) {
+      return er(e instanceof Error ? e.message : String(e))
+    }
   })
   ipcMain.handle('mcpoke:openExternal', async (_e, url: string) => {
     if (url.startsWith('https://') || url.startsWith('http://')) void shell.openExternal(url)

@@ -55,6 +55,8 @@ export interface PlatformSupport {
 
 export interface ServerConfig {
   transport: ServerTransport
+  /** Built-in MCPoke runtime implementation */
+  builtin?: 'mcpoke-native'
   /** Optional remote endpoint URL used for remote start/tunnel targets */
   remoteUrl?: string
   /** npm spec or local path for install step */
@@ -72,6 +74,15 @@ export interface ServerConfig {
   auth?: ServerAuthConfig
   /** Optional inferred auth requirement hints */
   authRequirement?: AuthRequirementHint
+}
+
+export type PermissionMode = 'full' | 'limited' | 'sandbox'
+
+export interface McpokeSettings {
+  theme: 'dark'
+  permissionMode: PermissionMode
+  notificationsEnabled: boolean
+  autoStartNativeRuntime: boolean
 }
 
 export type ServerAuthMode = 'none' | 'api_key' | 'bearer' | 'oauth' | 'custom'

@@ -32,12 +32,15 @@ export function pushLog(
   serverId: string,
   part: { message: string; level?: LogLevel; stream: LogStreamType; source: string }
 ): LogEntry {
+  const redacted = part.message
+    .replace(/(api[_-]?key|token|secret|password)\s*[=:]\s*["']?([A-Za-z0-9._-]{6,})["']?/gi, '$1=[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]{12,}/gi, 'Bearer [REDACTED]')
   const log: LogEntry = {
     id: randomUUID(),
     timestamp: Date.now(),
     level: part.level ?? 'info',
     source: part.source,
-    message: part.message,
+    message: redacted,
     stream: part.stream,
     serverId,
     serverName: nameById.get(serverId)

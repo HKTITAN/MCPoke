@@ -366,6 +366,8 @@ function AuthPane() {
 }
 
 function SettingsPane({ loadRegistry }: { loadRegistry: () => Promise<void> }) {
+  const settings = useAppStore((s) => s.settings)
+  const updateSettings = useAppStore((s) => s.updateSettings)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div>
@@ -376,6 +378,43 @@ function SettingsPane({ loadRegistry }: { loadRegistry: () => Promise<void> }) {
         <p style={{ color: 'var(--color-muted)', lineHeight: 1.6, fontSize: '12px' }}>
           MCPoke connects local MCP servers, inspects tools, streams logs, and tunnels HTTP endpoints to Poke.
         </p>
+      </div>
+      <div>
+        <div className="mcpoke-sec-head">
+          <span className="mcpoke-section-label">Native Runtime</span>
+          <div className="mcpoke-sec-line" />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            Permission mode
+            <select
+              className="mcpoke-btn"
+              style={{ minWidth: 140 }}
+              value={settings?.permissionMode ?? 'sandbox'}
+              onChange={(e) => { void updateSettings({ permissionMode: e.target.value as 'full' | 'limited' | 'sandbox' }) }}
+            >
+              <option value="full">Full</option>
+              <option value="limited">Limited</option>
+              <option value="sandbox">Sandbox</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            Notifications
+            <input
+              type="checkbox"
+              checked={settings?.notificationsEnabled ?? true}
+              onChange={(e) => { void updateSettings({ notificationsEnabled: e.target.checked }) }}
+            />
+          </label>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            Auto-start native runtime
+            <input
+              type="checkbox"
+              checked={settings?.autoStartNativeRuntime ?? false}
+              onChange={(e) => { void updateSettings({ autoStartNativeRuntime: e.target.checked }) }}
+            />
+          </label>
+        </div>
       </div>
       <div>
         <div className="mcpoke-sec-head">

@@ -2,6 +2,20 @@ import type { ServerRegistryItem } from '../../../shared/mcp-types.js'
 
 export const PRESET_SERVERS: ServerRegistryItem[] = [
   {
+    id: 'preset-mcpoke-native-host',
+    name: 'MCPoke Native Host (poke-gate + poke-pc)',
+    description:
+      'Built-in native MCP runtime: host command/file/screenshot tools plus persistent terminal sessions with history.',
+    source: 'preset',
+    config: {
+      transport: 'http',
+      builtin: 'mcpoke-native',
+      mcpPath: '/mcp'
+    },
+    platform: { win32: true, darwin: true, linux: true, notes: 'Native runtime with policy sandbox modes' },
+    lastSync: 0
+  },
+  {
     id: 'preset-mcp-hello',
     name: 'Local HTTP bridge (external)',
     description:

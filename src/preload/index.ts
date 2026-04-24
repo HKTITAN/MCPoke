@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../../shared/ipc.js'
 import type { AuthErrorEvent, ElectronApi } from '../../shared/ipc.js'
-import type { AuthViewModel, LogEntry, McpRegistryEntry, McpToolDescriptor, ServerViewModel } from '../../shared/mcp-types.js'
+import type { AuthViewModel, LogEntry, McpokeSettings, McpRegistryEntry, McpToolDescriptor, ServerViewModel } from '../../shared/mcp-types.js'
 import type { IpcResult } from '../../shared/ipc.js'
 
 class IpcBridgeError extends Error {
@@ -64,6 +64,8 @@ const api: ElectronApi = {
   pickRandomPort: () => unwrap(ipcRenderer.invoke(IPC.pickPort) as Promise<IpcResult<{ port: number }>>),
   setPort: (id, config) => unwrap(ipcRenderer.invoke(IPC.setPort, { id, config }) as Promise<IpcResult<ServerViewModel>>),
   getLogs: (id, max) => ipcRenderer.invoke(IPC.getLogs, { id, max }) as Promise<LogEntry[]>,
+  getSettings: () => unwrap(ipcRenderer.invoke(IPC.settingsGet) as Promise<IpcResult<McpokeSettings>>),
+  setSettings: (settings) => unwrap(ipcRenderer.invoke(IPC.settingsSet, settings) as Promise<IpcResult<McpokeSettings>>),
   onState: (cb) => {
     const fn = (_: unknown, p: { view: ServerViewModel }) => cb(p)
     ipcRenderer.on(IPC.onState, fn)

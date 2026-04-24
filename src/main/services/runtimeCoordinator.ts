@@ -11,7 +11,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Server as McpProxyServer } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { PRESET_SERVERS } from '../data/presets.js'
-import { getCache, loadPersistence, savePersistence, type McpokePersisted } from './persistence.js'
+import { getCache, getSettings, loadPersistence, savePersistence, type McpokePersisted } from './persistence.js'
 import { getLogs, pushLog, registerServerName } from './logBuffer.js'
 import { getAuthViewModel } from './authService.js'
 import { assertPortInRange, findFreePort, isPortFree } from '../../lib/portUtils.js'
@@ -36,6 +36,7 @@ import type {
 } from '../../../shared/mcp-types.js'
 import { isPlatformOk, type PlatformSupport, DEFAULT_PLATFORM } from '../../../shared/mcp-types.js'
 import { setTimeout as delay } from 'node:timers/promises'
+import { startNativeMcpServer, stopNativeMcpServer, type NativeServer } from './nativeMcpServer.js'
 
 type Live = {
   client: Client | null
@@ -57,6 +58,7 @@ type Live = {
   processPid?: number
   startedAt?: number
   bridgeUrl?: string
+  nativeServer: NativeServer | null
 }
 
 const lives = new Map<string, Live>()
@@ -89,7 +91,8 @@ function ensureLive(id: string): Live {
       connection: 'disconnected',
       runtime: 'idle',
       pokeSyncState: 'pending',
-      port: { mode: 'random', status: 'none' }
+      port: { mode: 'random', status: 'none' },
+      nativeServer: null
     }
     lives.set(id, e)
   }
@@ -543,6 +546,20 @@ export async function initRuntime(): Promise<void> {
   persistReady = markPersist()
   await persistReady
   for (const item of resolveItems()) registerServerName(item.id, item.name)
+  const settings = getSettings()
+  if (settings.autoStartNativeRuntime) {
+    const nativePreset = PRESET_SERVERS.find((x) => x.config.builtin === 'mcpoke-native')
+    if (nativePreset) {
+      void startServer(nativePreset.id).catch((error) => {
+        pushLog(nativePreset.id, {
+          source: 'native',
+          stream: 'system',
+          level: 'warn',
+          message: `Auto-start failed: ${error instanceof Error ? error.message : String(error)}`
+        })
+      })
+    }
+  }
 }
 
 function recordRuntime(id: string, s: RuntimeState) {
@@ -759,6 +776,23 @@ export async function startServer(id: string): Promise<ServerViewModel> {
     return portNum
   }
 
+  if (item.config.builtin === 'mcpoke-native') {
+    const settings = getSettings()
+    const portNum = await resolveLocalPort()
+    l.nativeServer = await startNativeMcpServer(portNum, settings.permissionMode)
+    const { client, tr } = await tryConnectHttp(id, localHttpUrl(portNum, '/mcp'))
+    l.client = client
+    l.httpTr = tr
+    l.connection = 'ready'
+    l.processPid = undefined
+    l.startedAt = Date.now()
+    await loadToolsFromClient(id, client)
+    recordRuntime(id, 'running')
+    const v = toView(item)
+    broadcastView(v)
+    return v
+  }
+
   if (item.config.transport === 'stdio') {
     if (!item.config.command) {
       throw new Error('Missing command for stdio server start')
@@ -882,6 +916,8 @@ export async function stopServer(id: string): Promise<ServerViewModel> {
   l.stdio = null
   l.httpTr = null
   await closeBridge(l)
+  await stopNativeMcpServer(l.nativeServer)
+  l.nativeServer = null
   if (l.httpChild) {
     l.httpChild.kill('SIGTERM')
     l.httpChild = null
